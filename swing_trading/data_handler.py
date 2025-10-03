@@ -11,6 +11,7 @@ class DataHandler:
     def __init__(self, config):
         self.config = config
         self.exchange = self._connect_to_exchange()
+        # This will fail if connection is not established, which is good.
         self.platform_id = self.exchange.id
         
         # --- Caching ---
