@@ -55,24 +55,38 @@ class DataHandler:
 
     def _connect_to_exchange(self):
         """
-        Establishes a connection to the exchange with retry logic.
+        Establishes a connection to the exchange with retry logic and fixes for recursion errors.
         """
         print("Connecting to Binance.US...")
         max_retries = 5
         for attempt in range(max_retries):
             try:
+                # Step 1: Instantiate the exchange class with an explicit timeout
                 exchange = ccxt.binanceus({
                     'apiKey': self.config.api_key,
                     'secret': self.config.api_secret,
-                    'options': {'defaultType': 'spot'},
-                    'enableRateLimit': True, # Enable ccxt's built-in rate limiter
+                    'options': {
+                        'defaultType': 'spot',
+                    },
+                    'enableRateLimit': True,
+                    'timeout': 30000,  # 30 seconds timeout
                 })
+                
+                # Step 2: Explicitly load the markets after instantiation
                 exchange.load_markets()
+                
                 print("Successfully connected to Binance.US.")
                 return exchange
-            except Exception as e:
-                print(f"Connection failed on attempt {attempt + 1}/{max_retries}: {e}")
+
+            # Catch specific CCXT network errors for better debugging
+            except ccxt.NetworkError as e:
+                print(f"Connection failed on attempt {attempt + 1}/{max_retries} (NetworkError): {e}")
                 time.sleep(5)
+            # Catch other exceptions, including the RecursionError
+            except Exception as e:
+                print(f"Connection failed on attempt {attempt + 1}/{max_retries} (General Error): {e}")
+                time.sleep(5)
+        
         raise ConnectionError("Failed to connect to the exchange after several retries.")
 
     def fetch_ohlcv(self, limit=100) -> pd.DataFrame:
