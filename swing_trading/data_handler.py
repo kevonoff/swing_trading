@@ -1,18 +1,46 @@
 import ccxt
 import pandas as pd
 import time
+import os
+import pickle
 
 class DataHandler:
     """
-    Handles all communication with the exchange to fetch market data.
+    Handles all communication with the exchange to fetch market data, with local caching.
     """
     def __init__(self, config):
         self.config = config
         self.exchange = self._connect_to_exchange()
+        self.platform_id = self.exchange.id
         
+        # --- Caching ---
+        self.cache_file = 'data.data'
+        self.cache = self._load_cache()
+
         # --- Rate Limiting ---
         self.rate_limit_delay_seconds = 0.1 # Enforces max 10 requests/sec, well under 1200/min
         self.last_request_time = 0
+
+    def _load_cache(self) -> dict:
+        """
+        Loads the data cache from a local pickle file.
+        """
+        if os.path.exists(self.cache_file):
+            try:
+                with open(self.cache_file, 'rb') as f:
+                    print(f"Loading data from local cache file: {self.cache_file}")
+                    return pickle.load(f)
+            except (pickle.UnpicklingError, EOFError):
+                print("Warning: Cache file is corrupt or empty. Starting fresh.")
+                return {}
+        return {}
+
+    def _save_cache(self):
+        """
+        Saves the current data cache to a local pickle file.
+        """
+        with open(self.cache_file, 'wb') as f:
+            pickle.dump(self.cache, f)
 
     def _apply_rate_limit(self):
         """
@@ -48,21 +76,34 @@ class DataHandler:
 
     def fetch_ohlcv(self, limit=100) -> pd.DataFrame:
         """
-        Fetches historical OHLCV data from the exchange.
+        Fetches historical OHLCV data, utilizing the cache first.
         """
+        # --- Caching Logic ---
+        # Key format: platform_symbol_timeframe_limit
+        symbol_safe = self.config.symbol.replace('/', '')
+        cache_key = f"{self.platform_id}_{symbol_safe}_{self.config.timeframe}_{limit}"
+        
+        if cache_key in self.cache:
+            print(f"Found data in cache for key: {cache_key}")
+            return self.cache[cache_key]
+        
+        # --- API Fetch Logic (if not in cache) ---
         try:
-            # Apply our custom rate limit before making the API call
             self._apply_rate_limit()
             
-            print(f"Fetching last {limit} {self.config.timeframe} candles for {self.config.symbol}...")
+            print(f"Fetching last {limit} {self.config.timeframe} candles for {self.config.symbol} from exchange...")
             ohlcv = self.exchange.fetch_ohlcv(self.config.symbol, self.config.timeframe, limit=limit)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             
-            # Basic data validation
             if df.empty or 'close' not in df.columns or df['close'].isnull().all():
                 print("Warning: Fetched data is empty or invalid.")
                 return pd.DataFrame()
+
+            # --- Save to Cache ---
+            print(f"Saving new data to cache with key: {cache_key}")
+            self.cache[cache_key] = df
+            self._save_cache()
 
             return df
         except Exception as e:
