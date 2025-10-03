@@ -1,21 +1,20 @@
-import ccxt
 import os
 import time
-import pandas as pd
+from dotenv import load_dotenv
 import sys
 
 from config import ConfigurationManager
 from sentiment import SentimentAnalyzer
-from swing_trading.data_handler import StrategyEngine
+from strategy_engine import StrategyEngine
 from data_handler import DataHandler
 from portfolio_manager import PortfolioManager
 from execution_handler import ExecutionHandler
 from backtester import Backtester
 
-# ==============================================================================
-# MAIN TRADER APPLICATION
-# ==============================================================================
 class Trader:
+    """
+    The main class that orchestrates the live trading bot.
+    """
     def __init__(self, config: ConfigurationManager):
         self.config = config
         self.data_handler = DataHandler(self.config)
@@ -24,12 +23,16 @@ class Trader:
         self.sentiment_analyzer = SentimentAnalyzer()
         self.strategy_engine = StrategyEngine()
         
+        # State tracking
         self.in_position = False
         self.stop_loss_price = None
         self.entry_price = 0.0
 
     def _get_strategy_config_from_manager(self) -> dict:
-        """ Constructs the strategy 'request object' from the main config. """
+        """
+        Constructs the strategy configuration dictionary based on the active strategy
+        set in the ConfigurationManager.
+        """
         strategy_name = self.config.active_strategy
         if strategy_name == 'SENTIMENT_MOMENTUM':
             return {
@@ -41,26 +44,31 @@ class Trader:
                     "atr_multiplier": self.config.sm_atr_multiplier
                 }
             }
-        # Add other strategies here...
+        # Future strategies would be added here as 'elif' blocks
         else:
             raise ValueError(f"Strategy '{strategy_name}' not recognized in Trader.")
 
     def run(self):
+        """
+        The main trading loop for live or dry-run mode.
+        """
         print("Starting Trader application in LIVE/DRY-RUN mode...")
         while True:
             try:
-                # 1. Fetch data
+                # 1. Fetch latest market data
                 ohlcv_data = self.data_handler.fetch_ohlcv()
                 if ohlcv_data.empty:
-                    time.sleep(60)
+                    time.sleep(60) # Wait a minute if data fetch fails
                     continue
 
-                # 2. Get strategy config and add indicators
+                # 2. Get the active strategy configuration
                 strategy_config = self._get_strategy_config_from_manager()
+                
+                # 3. Add indicators to data
                 ohlcv_data_with_indicators = self.strategy_engine.add_indicators(ohlcv_data.copy(), strategy_config)
-
-                # 3. Check for stop-loss
                 latest_candle = ohlcv_data_with_indicators.iloc[-1]
+
+                # 4. Check for stop-loss trigger (highest priority)
                 if self.in_position and latest_candle['close'] <= self.stop_loss_price:
                     print(f"!!! STOP-LOSS TRIGGERED at ${self.stop_loss_price:.2f} !!!")
                     exit_price = latest_candle['close']
@@ -70,14 +78,14 @@ class Trader:
                         self.in_position = False
                         self.stop_loss_price = None
                         self.entry_price = 0.0
-                    continue
+                    continue # Restart the loop
 
-                # 4. Generate Signal
+                # 5. Get signals and sentiment
                 current_sentiment = self.sentiment_analyzer.analyze()
                 signal_details = self.strategy_engine.generate_signal(ohlcv_data_with_indicators, strategy_config, current_sentiment)
                 signal = signal_details.get('signal')
 
-                # 5. Act on signal
+                # 6. Act on signals
                 if signal == 'buy' and not self.in_position:
                     self.stop_loss_price = signal_details.get('stop_loss')
                     if not self.stop_loss_price:
@@ -112,16 +120,13 @@ class Trader:
                 print(f"An unexpected error occurred in the main loop: {e}")
 
             print("\n" + "="*50 + "\n")
-            time.sleep(3600)
+            time.sleep(3600) # Wait for the next candle
 
-# ==============================================================================
-# SCRIPT ENTRY POINT
-# ==============================================================================
 if __name__ == '__main__':
     load_dotenv()
     config = ConfigurationManager()
 
-    # Allow running the backtester from the command line
+    # --- Command-line argument to switch between live trading and backtesting ---
     if len(sys.argv) > 1 and sys.argv[1] == 'backtest':
         strategy_name = config.active_strategy
         if strategy_name == 'SENTIMENT_MOMENTUM':
@@ -134,7 +139,7 @@ if __name__ == '__main__':
                     "atr_multiplier": config.sm_atr_multiplier
                 }
             }
-            # Example: python main.py backtest 2023-01-01
+            # Allow specifying a start date from the command line, e.g., "python main.py backtest 2023-01-01"
             start_date_str = sys.argv[2] if len(sys.argv) > 2 else "2023-01-01"
             backtester = Backtester(config, strategy_conf, start_date_str)
             backtester.run()
@@ -143,3 +148,4 @@ if __name__ == '__main__':
     else:
         trader = Trader(config)
         trader.run()
+
