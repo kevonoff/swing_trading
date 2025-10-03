@@ -103,36 +103,4 @@ class CCTXClient:
         except Exception as e:
             print(f"An error occurred while fetching OHLCV: {e}")
             return []
-
-
-if __name__ == '__main__':
-    # Initialize the client for a specific exchange (e.g., 'kraken')
-    crypto_client = CCTXClient('kraken')
-
-    # 1. Fetch Markets
-    markets = crypto_client.get_markets()
-    print(f"\nTotal Markets: {len(markets)}")
-    print(f"Example Market: {markets.get('BTC/USD')}")
-
-    # 2. Fetch Ticker
-    symbol = 'ETH/USD'
-    ticker = crypto_client.fetch_ticker(symbol)
-    if ticker:
-        print(f"\n--- Ticker for {symbol} ---")
-        print(f"Last Price: {ticker.get('last')}")
-        print(f"Volume (24h): {ticker.get('quoteVolume')}")
-
-    # 3. Fetch Order Book (Top 5 levels)
-    order_book = crypto_client.fetch_order_book(symbol, limit=5)
-    if order_book:
-        print(f"\n--- Order Book for {symbol} ---")
-        print(f"Top Bid: {order_book['bids'][0]}")
-        print(f"Top Ask: {order_book['asks'][0]}")
-
-    # 4. Fetch OHLCV (Last 10 1-hour candles)
-    ohlcv_data = crypto_client.fetch_ohlcv(symbol, timeframe='1h', limit=10)
-    if ohlcv_data:
-        print(f"\n--- Last 10 OHLCV for {symbol} (1h) ---")
-        # Print the last candle
-        last_candle = ohlcv_data[-1]
-        print(f"Timestamp (MS): {last_candle[0]}, Close: {last_candle[4]}")
+        

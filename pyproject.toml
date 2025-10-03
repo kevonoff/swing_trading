@@ -26,6 +26,8 @@ dependencies = [
     "ccxt",
     "pandas",
     "pandas-ta",
+    "nltk",
+    "requests",
 ]
 
 [project.scripts]
