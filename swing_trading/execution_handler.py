@@ -1,44 +1,39 @@
 from config import ConfigurationManager
 
-class PortfolioManager:
+class ExecutionHandler:
     """
-    Manages the portfolio's state, including balance, P&L, and position sizing.
+    Handles the execution of trades on the exchange.
+    Can operate in 'dry_run' or 'live' mode.
     """
-    def __init__(self, config: ConfigurationManager):
+    def __init__(self, config: ConfigurationManager, exchange):
         self.config = config
-        self.balance = self.config.capital_base
-        self.initial_balance = self.config.capital_base
-        self.last_position_size = 0.0
-        self.realized_pnl = 0.0
+        self.exchange = exchange
 
-    def calculate_position_size(self, entry_price: float, stop_loss_price: float):
+    def execute_order(self, order_type: str, amount: float, symbol: str):
         """
-        Calculates the position size based on a fixed percentage of the total balance.
+        Sends a market order to the exchange.
         """
-        if stop_loss_price >= entry_price:
-            print("Error: Stop-loss price must be below entry price. Cannot calculate position size.")
-            return 0.0
-
-        risk_amount_dollars = self.balance * (self.config.risk_per_trade_percent / 100.0)
-        risk_per_coin_dollars = entry_price - stop_loss_price
+        print("-" * 20 + " EXECUTION " + "-" * 20)
+        print(f"Requesting to {order_type.upper()} {amount:.6f} {symbol}")
         
-        if risk_per_coin_dollars <= 0:
-            return 0.0
+        if self.config.dry_run:
+            print("--- DRY RUN MODE ---")
+            print(f"Order would be sent to the exchange.")
+            # In dry run mode, we always simulate a successful order
+            return True
+        else:
+            try:
+                # This is where you would place the actual exchange API call for a market order
+                # For example:
+                # order = self.exchange.create_market_order(symbol, order_type, amount)
+                print("--- LIVE MODE ---")
+                print("Live order execution is a placeholder. Simulating success for now.")
+                # print("Exchange response:", order) # Log the result from the exchange
+                
+                # Placeholder for actual execution result validation
+                # In a real system, you would check the order status from the exchange response.
+                return True
+            except Exception as e:
+                print(f"An error occurred during live order execution: {e}")
+                return False
 
-        position_size = risk_amount_dollars / risk_per_coin_dollars
-        print(f"Calculated Position Size ({self.config.symbol.split('/')[0]}): {position_size:.6f} for a risk of ${risk_amount_dollars:.2f}")
-        self.last_position_size = position_size
-        return position_size
-
-    def update_balance_after_trade(self, exit_price: float, entry_price: float, position_size: float):
-        """ 
-        Updates the balance after closing a position and prints trade summary. 
-        """
-        pnl = (exit_price - entry_price) * position_size
-        self.balance += pnl
-        self.realized_pnl += pnl
-        print("=" * 20 + " TRADE CLOSED " + "=" * 20)
-        print(f"  P&L for this trade: ${pnl:.2f}")
-        print(f"  New Portfolio Balance: ${self.balance:.2f}")
-        print(f"  Total Realized P&L: ${self.realized_pnl:.2f}")
-        print("=" * 54)
