@@ -1,88 +1,117 @@
-import nltk
-import requests
-import pyperclip
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
+import time
+import argparse
+from config import ConfigurationManager
+from data_handler import DataHandler
+from strategy_engine import StrategyEngine
+from portfolio_manager import PortfolioManager
+from execution_handler import ExecutionHandler
+from backtester import Backtester
 
 class SentimentAnalyzer:
     """
-    Analyzes market sentiment based on live crypto news headlines.
+    The main class that orchestrates the entire trading process.
     """
-    def __init__(self):
-        self._download_vader_lexicon()
-        self.sid = SentimentIntensityAnalyzer()
-        self.news_api_url = 'https://min-api.cryptocompare.com/data/v2/news/?lang=EN&categories=BTC'
-
-    def _download_vader_lexicon(self):
-        """Downloads the VADER lexicon if not already present."""
-        try:
-            # Check if the lexicon is available
-            nltk.data.find('sentiment/vader_lexicon.zip')
-        except LookupError:
-            print("VADER lexicon not found. Downloading...")
-            try:
-                # --- FIX ---
-                # Use the top-level download function and a general Exception
-                nltk.download('vader_lexicon')
-                # --- END FIX ---
-                print("Download complete.")
-            except Exception as e: # This is more robust than the specific DownloadError
-                print(f"Error downloading VADER lexicon: {e}")
-                print("Please check your internet connection and try again.")
-                print("If the problem persists, try running this command in your terminal:")
-                print("python -m nltk.downloader vader_lexicon")
-                raise
-
-    def get_current_market_sentiment(self) -> dict:
-        """
-        Fetches live news and returns a sentiment score.
-        """
-        print("Fetching live news headlines for sentiment analysis...")
-        try:
-            response = requests.get(self.news_api_url)
-            response.raise_for_status() # Raise an exception for bad status codes
-            news_data = response.json().get('Data', [])
-            
-            if not news_data:
-                print("Warning: No news data returned from the API.")
-                return {"headlines_analyzed": 0, "sentiment_score": 0.5} # Return neutral if no news
-
-            headlines = [article['title'] for article in news_data if 'title' in article]
-            self.copy_headlines_to_clipboard(headlines)
-            
-            if not headlines:
-                print("Warning: News data was found, but it contained no headlines.")
-                return {"headlines_analyzed": 0, "sentiment_score": 0.5}
-
-            sentiment_scores = [self.sid.polarity_scores(headline)['compound'] for headline in headlines]
-            
-            # Average the compound scores
-            average_score = sum(sentiment_scores) / len(sentiment_scores)
-            
-            # Normalize the score to be between 0 (most negative) and 1 (most positive)
-            normalized_score = (average_score + 1) / 2
-            
-            print(f"Analyzed {len(headlines)} headlines. Sentiment Score: {normalized_score:.2f}")
-            return {
-                "headlines_analyzed": len(headlines),
-                "sentiment_score": normalized_score
-            }
-
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching news from API: {e}")
-            return {"headlines_analyzed": 0, "sentiment_score": 0.5} # Return neutral on API failure
-        except Exception as e:
-            print(f"An unexpected error occurred during sentiment analysis: {e}")
-            return {"headlines_analyzed": 0, "sentiment_score": 0.5}
-
-    def copy_headlines_to_clipboard(self, headlines: list):
-        """Formats and copies the fetched headlines to the system clipboard."""
-        if not headlines:
-            return
+    def __init__(self, run_backtest=False):
+        self.config = ConfigurationManager()
+        self.data_handler = DataHandler(self.config)
+        self.sentiment_analyzer = SentimentAnalyzer()
+        self.strategy_engine = StrategyEngine()
+        self.portfolio_manager = PortfolioManager(self.config)
+        self.execution_handler = ExecutionHandler(self.config)
         
-        try:
-            formatted_headlines = "\n".join([f"- {h}" for h in headlines])
-            pyperclip.copy(formatted_headlines)
-            print("Successfully copied headlines to clipboard.")
-        except pyperclip.PyperclipException as e:
-            # This can happen in environments without a GUI (like some servers)
-            print(f"Could not copy to clipboard: {e}")
+        self.in_position = False
+        self.current_position = None
+
+        if run_backtest:
+            self.run_backtest()
+        else:
+            self.run_live()
+
+    def run_live(self):
+        """Main loop for the live trading bot."""
+        print("Starting live trading bot...")
+        while True:
+            try:
+                # 1. Fetch latest market data
+                market_data = self.data_handler.fetch_latest_data()
+                if market_data.empty:
+                    print("Could not fetch market data. Waiting for next cycle.")
+                    time.sleep(3600)
+                    continue
+
+                current_price = market_data.iloc[-1]['close']
+
+                # 2. Check stop-loss
+                if self.in_position:
+                    if current_price <= self.current_position['stop_loss']:
+                        print(f"Stop-loss triggered at {current_price}. Selling position.")
+                        self.execution_handler.execute_sell(self.current_position)
+                        self.portfolio_manager.record_trade_close(
+                            self.current_position,
+                            exit_price=current_price
+                        )
+                        self.in_position = False
+                        self.current_position = None
+                        print("-" * 50)
+                
+                # 3. Get strategy signal
+                strategy_config = self.config.get_strategy_config()
+                trade_signal = self.strategy_engine.generate_signal(market_data.copy(), strategy_config)
+
+                # 4. Get sentiment analysis
+                # --- FIX ---
+                sentiment_data = self.sentiment_analyzer.get_current_market_sentiment()
+                # --- END FIX ---
+                sentiment_score = sentiment_data['sentiment_score']
+                
+                print(f"Current Price: {current_price} | Signal: {trade_signal.signal} | Sentiment: {sentiment_score:.2f}")
+
+                # 5. Execute based on signal and sentiment
+                if trade_signal.signal == 'BUY' and not self.in_position:
+                    if sentiment_score >= 0.5: # Only buy if sentiment is not negative
+                        print("Buy signal received with positive sentiment. Executing trade.")
+                        trade = self.portfolio_manager.calculate_position_size(trade_signal)
+                        self.execution_handler.execute_buy(trade)
+                        self.in_position = True
+                        self.current_position = trade
+                    else:
+                        print("Buy signal received, but sentiment is negative. Holding.")
+                
+                elif trade_signal.signal == 'SELL' and self.in_position:
+                    print("Sell signal received. Closing position.")
+                    self.execution_handler.execute_sell(self.current_position)
+                    self.portfolio_manager.record_trade_close(
+                        self.current_position,
+                        exit_price=current_price
+                    )
+                    self.in_position = False
+                    self.current_position = None
+                
+                print(f"Current Portfolio Balance: ${self.portfolio_manager.get_balance():.2f}")
+                print("-" * 50)
+                
+            except Exception as e:
+                print(f"An unexpected error occurred in the main loop: {e}")
+            
+            # Wait for the next candle
+            print("Waiting for the next 1-hour candle...")
+            time.sleep(3600)
+
+    def run_backtest(self):
+        """Initializes and runs the backtester."""
+        print("Initializing backtester...")
+        backtester = Backtester(
+            config=self.config,
+            data_handler=self.data_handler,
+            strategy_engine=self.strategy_engine,
+            portfolio_manager=self.portfolio_manager
+        )
+        backtester.run()
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Swing Trading Bot")
+    parser.add_argument('--backtest', action='store_true', help='Run the backtester instead of the live bot.')
+    args = parser.parse_args()
+    
+    trader = Trader(run_backtest=args.backtest)
+
