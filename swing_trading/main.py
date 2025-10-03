@@ -2,7 +2,7 @@ import time
 import sys
 
 from config import ConfigurationManager
-from sentiment import SentimentAnalyzer
+from sentiment import SentimentEngine
 from strategy_engine import StrategyEngine
 from data_handler import DataHandler
 from portfolio_manager import PortfolioManager
@@ -18,7 +18,7 @@ class Trader:
         self.data_handler = DataHandler(self.config)
         self.portfolio_manager = PortfolioManager(self.config)
         self.execution_handler = ExecutionHandler(self.config, self.data_handler.exchange)
-        self.sentiment_analyzer = SentimentAnalyzer()
+        self.sentiment_analyzer = SentimentEngine()
         self.strategy_engine = StrategyEngine()
         
         # State tracking

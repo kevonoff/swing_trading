@@ -16,21 +16,24 @@ class DataHandler:
         """
         Connects to the exchange with retry logic for robustness.
         """
-        print("Connecting to Binance...")
+        print("Connecting to Binance.US...") # Updated print statement
         for i in range(5): # Retry up to 5 times
             try:
-                exchange = ccxt.binance({
+                # --- FIX ---
+                # Use ccxt.binanceus for users in the United States
+                exchange = ccxt.binanceus({
+                # --- END FIX ---
                     'apiKey': self.config.api_key, 'secret': self.config.api_secret,
                     'options': {'defaultType': 'spot'},
                     'enableRateLimit': True
                 })
                 exchange.load_markets()
-                print("Successfully connected to Binance.")
+                print("Successfully connected to Binance.US.") # Updated print statement
                 return exchange
             except (ccxt.NetworkError, ccxt.ExchangeError) as e:
                 print(f"Connection failed: {e}. Retrying in {2**i} seconds...")
                 time.sleep(2**i)
-        raise ConnectionError("Could not connect to Binance after multiple retries.")
+        raise ConnectionError("Could not connect to Binance.US after multiple retries.")
 
     def fetch_ohlcv(self, limit=100) -> pd.DataFrame:
         """
