@@ -6,7 +6,7 @@ import sys
 
 from config import ConfigurationManager
 from sentiment import SentimentAnalyzer
-from strategy_engine import StrategyEngine
+from swing_trading.data_handler import StrategyEngine
 from data_handler import DataHandler
 from portfolio_manager import PortfolioManager
 from execution_handler import ExecutionHandler
