@@ -26,6 +26,7 @@ dependencies = [
     "ccxt",
     "pandas",
     "pandas-ta",
+    "pyperclip",
     "nltk",
     "requests",
 ]
