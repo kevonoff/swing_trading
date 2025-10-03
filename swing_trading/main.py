@@ -121,7 +121,6 @@ class Trader:
             time.sleep(3600) # Wait for the next candle
 
 if __name__ == '__main__':
-    load_dotenv()
     config = ConfigurationManager()
 
     # --- Command-line argument to switch between live trading and backtesting ---

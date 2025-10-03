@@ -1,5 +1,4 @@
 import os
-from dotenv import load_dotenv
 
 class ConfigurationManager:
     """
@@ -7,7 +6,6 @@ class ConfigurationManager:
     Centralizes parameters for easy access and modification.
     """
     def __init__(self):
-        load_dotenv()
         # --- Exchange & API ---
         self.api_key = os.getenv('BINANCE_API_KEY')
         self.api_secret = os.getenv('BINANCE_API_SECRET')

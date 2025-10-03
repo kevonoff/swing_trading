@@ -2,7 +2,6 @@ import ccxt
 import os
 import time
 import pandas as pd
-from dotenv import load_dotenv
 from config import ConfigurationManager
 
 class DataHandler:
