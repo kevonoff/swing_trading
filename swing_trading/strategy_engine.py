@@ -27,12 +27,26 @@ class StrategyEngine:
         #     ohlcv_df = ohlcv_df.join(bbands)
 
         ohlcv_df.dropna(inplace=True)
+        
+        # --- BUG FIX ---
+        # If all rows were dropped, return the empty dataframe to prevent a crash.
+        if ohlcv_df.empty:
+            print("Warning: DataFrame is empty after adding indicators and dropping NaNs. Check indicator periods vs. data length.")
+            return ohlcv_df
+        # --- END BUG FIX ---
+        
         return ohlcv_df
 
     def generate_signal(self, ohlcv_df_with_indicators: pd.DataFrame, strategy_config: dict, sentiment: dict) -> dict:
         """
         Generates a trading signal ('buy', 'sell', 'hold') based on the strategy logic.
         """
+        # --- BUG FIX ---
+        # If the dataframe is empty from the previous step, we can't generate a signal.
+        if ohlcv_df_with_indicators.empty:
+            return {"signal": "hold", "stop_loss": None}
+        # --- END BUG FIX ---
+
         strategy_name = strategy_config.get("name")
         params = strategy_config.get("params", {})
         latest_candle = ohlcv_df_with_indicators.iloc[-1]
@@ -64,3 +78,4 @@ class StrategyEngine:
                 return signal_details
         
         return signal_details
+

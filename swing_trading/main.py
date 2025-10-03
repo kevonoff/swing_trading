@@ -1,6 +1,5 @@
 import os
 import time
-from dotenv import load_dotenv
 import sys
 
 from config import ConfigurationManager
