@@ -32,7 +32,6 @@ class StrategyEngine:
         # If all rows were dropped, return the empty dataframe to prevent a crash.
         if ohlcv_df.empty:
             print("Warning: DataFrame is empty after adding indicators and dropping NaNs. Check indicator periods vs. data length.")
-            return ohlcv_df
         # --- END BUG FIX ---
         
         return ohlcv_df

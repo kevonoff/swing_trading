@@ -2,6 +2,7 @@ import ccxt
 import os
 import time
 import pandas as pd
+from dotenv import load_dotenv
 from config import ConfigurationManager
 
 class DataHandler:
@@ -41,6 +42,10 @@ class DataHandler:
             ohlcv = self.exchange.fetch_ohlcv(self.config.symbol, self.config.timeframe, limit=limit)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            
+            if df.empty:
+                print("Warning: Fetched OHLCV data is empty.")
+
             return df
         except Exception as e:
             print(f"Error fetching OHLCV data: {e}")
