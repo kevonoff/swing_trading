@@ -107,11 +107,3 @@ class SentimentAnalyzer:
             portfolio_manager=self.portfolio_manager
         )
         backtester.run()
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Swing Trading Bot")
-    parser.add_argument('--backtest', action='store_true', help='Run the backtester instead of the live bot.')
-    args = parser.parse_args()
-    
-    trader = Trader(run_backtest=args.backtest)
-
