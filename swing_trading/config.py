@@ -1,9 +1,7 @@
 import os
-from dotenv import load_dotenv
 
 class ConfigurationManager:
     def __init__(self):
-        load_dotenv()
         # --- API Credentials ---
         self.api_key = os.getenv('BINANCE_API_KEY')
         self.api_secret = os.getenv('BINANCE_API_SECRET')
