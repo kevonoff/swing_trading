@@ -3,7 +3,7 @@ import os
 import time
 import pandas as pd
 from config import ConfigurationManager
-from sentiment_analysis.engine import SentimentAnalyzer
+from sentiment_engine import SentimentAnalyzer
 from strategy_engine import StrategyEngine
 
 # ==============================================================================
