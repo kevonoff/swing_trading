@@ -2,117 +2,22 @@ import ccxt
 import os
 import time
 import pandas as pd
-import pandas_ta as ta
+import sys
+
 from config import ConfigurationManager
-from sentiment import SentimentAnalyzer # <--- CORRECTED IMPORT
+from sentiment import SentimentAnalyzer
 from strategy_engine import StrategyEngine
-
-# ==============================================================================
-# DATA HANDLER
-# ==============================================================================
-class DataHandler:
-    def __init__(self, config: ConfigurationManager):
-        self.config = config
-        self.exchange = self._connect_to_exchange()
-
-    def _connect_to_exchange(self):
-        """ Connects to the exchange with a retry mechanism for robustness. """
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                print("Connecting to Binance...")
-                exchange = ccxt.binance({
-                    'apiKey': self.config.api_key, 'secret': self.config.api_secret,
-                    'options': {'defaultType': 'spot'},
-                })
-                exchange.load_markets()
-                print("Successfully connected to Binance.")
-                return exchange
-            except Exception as e:
-                print(f"Connection attempt {attempt + 1}/{max_retries} failed: {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(5) # Wait 5 seconds before retrying
-                else:
-                    print("Could not connect to the exchange after several attempts. Exiting.")
-                    raise # Re-raise the last exception
-        return None # Should not be reached
-
-    def fetch_ohlcv(self, limit=100):
-        print(f"Fetching last {limit} {self.config.timeframe} candles for {self.config.symbol}...")
-        try:
-            ohlcv = self.exchange.fetch_ohlcv(self.config.symbol, self.config.timeframe, limit=limit)
-            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            return df
-        except Exception as e:
-            print(f"Error fetching OHLCV data: {e}")
-            return pd.DataFrame()
-
-# ==============================================================================
-# PORTFOLIO & RISK MANAGER
-# ==============================================================================
-class PortfolioManager:
-    def __init__(self, config: ConfigurationManager):
-        self.config = config
-        self.balance = self.config.capital_base
-        self.last_position_size = 0.0
-        self.realized_pnl = 0.0
-
-    def calculate_position_size(self, entry_price: float, stop_loss_price: float):
-        risk_amount_dollars = self.balance * (self.config.risk_per_trade_percent / 100.0)
-        risk_per_coin_dollars = entry_price - stop_loss_price
-        
-        if risk_per_coin_dollars <= 0:
-            print("Error: Stop-loss price must be below entry price. Cannot calculate position size.")
-            return 0.0
-
-        position_size = risk_amount_dollars / risk_per_coin_dollars
-        print(f"Calculated Position Size (BTC): {position_size:.6f}")
-        self.last_position_size = position_size
-        return position_size
-
-    def update_balance_after_trade(self, exit_price: float, entry_price: float, position_size: float):
-        """ Updates the balance after closing a position. """
-        pnl = (exit_price - entry_price) * position_size
-        self.balance += pnl
-        self.realized_pnl += pnl
-        print("=" * 20 + " TRADE CLOSED " + "=" * 20)
-        print(f"P&L for this trade: ${pnl:.2f}")
-        print(f"New Portfolio Balance: ${self.balance:.2f}")
-        print(f"Total Realized P&L: ${self.realized_pnl:.2f}")
-
-# ==============================================================================
-# EXECUTION HANDLER
-# ==============================================================================
-class ExecutionHandler:
-    def __init__(self, config: ConfigurationManager, exchange):
-        self.config = config
-        self.exchange = exchange
-
-    def execute_order(self, order_type: str, amount: float, symbol: str):
-        print("-" * 20 + " EXECUTION " + "-" * 20)
-        print(f"Requesting to {order_type.upper()} {amount:.6f} {symbol}")
-        
-        if self.config.dry_run:
-            print("--- DRY RUN MODE ---")
-            print(f"Order would be sent to the exchange.")
-            return True # Simulate successful order
-        else:
-            try:
-                # TODO: Implement actual order execution logic
-                print("--- LIVE MODE ---")
-                print("Live order execution not yet implemented.")
-                return True # Placeholder for actual execution result
-            except Exception as e:
-                print(f"An error occurred during order execution: {e}")
-                return False
+from data_handler import DataHandler
+from portfolio_manager import PortfolioManager
+from execution_handler import ExecutionHandler
+from backtester import Backtester
 
 # ==============================================================================
 # MAIN TRADER APPLICATION
 # ==============================================================================
 class Trader:
-    def __init__(self):
-        self.config = ConfigurationManager()
+    def __init__(self, config: ConfigurationManager):
+        self.config = config
         self.data_handler = DataHandler(self.config)
         self.portfolio_manager = PortfolioManager(self.config)
         self.execution_handler = ExecutionHandler(self.config, self.data_handler.exchange)
@@ -141,7 +46,7 @@ class Trader:
             raise ValueError(f"Strategy '{strategy_name}' not recognized in Trader.")
 
     def run(self):
-        print("Starting Trader application...")
+        print("Starting Trader application in LIVE/DRY-RUN mode...")
         while True:
             try:
                 # 1. Fetch data
@@ -150,13 +55,11 @@ class Trader:
                     time.sleep(60)
                     continue
 
-                # 2. Get strategy config
+                # 2. Get strategy config and add indicators
                 strategy_config = self._get_strategy_config_from_manager()
-                
-                # 3. Add indicators to data
-                ohlcv_data_with_indicators = self.strategy_engine.add_indicators(ohlcv_data, strategy_config)
+                ohlcv_data_with_indicators = self.strategy_engine.add_indicators(ohlcv_data.copy(), strategy_config)
 
-                # 4. Check for stop-loss
+                # 3. Check for stop-loss
                 latest_candle = ohlcv_data_with_indicators.iloc[-1]
                 if self.in_position and latest_candle['close'] <= self.stop_loss_price:
                     print(f"!!! STOP-LOSS TRIGGERED at ${self.stop_loss_price:.2f} !!!")
@@ -169,14 +72,13 @@ class Trader:
                         self.entry_price = 0.0
                     continue
 
-                # 5. Generate Signal
+                # 4. Generate Signal
                 current_sentiment = self.sentiment_analyzer.analyze()
                 signal_details = self.strategy_engine.generate_signal(ohlcv_data_with_indicators, strategy_config, current_sentiment)
                 signal = signal_details.get('signal')
 
-                # 6. Act on signal
+                # 5. Act on signal
                 if signal == 'buy' and not self.in_position:
-                    # The Strategy Engine now provides the stop-loss price
                     self.stop_loss_price = signal_details.get('stop_loss')
                     if not self.stop_loss_price:
                         print("Strategy did not provide a stop-loss. Aborting trade.")
@@ -189,10 +91,9 @@ class Trader:
                     
                     if position_size > 0:
                         order_result = self.execution_handler.execute_order('buy', position_size, self.config.symbol)
-                        # Only update state if the order was successful
                         if order_result:
                             self.in_position = True
-                            self.entry_price = current_price # Record entry price
+                            self.entry_price = current_price
 
                 elif signal == 'sell' and self.in_position:
                     print("Sell signal detected. Closing position.")
@@ -203,8 +104,7 @@ class Trader:
                         self.in_position = False
                         self.stop_loss_price = None
                         self.entry_price = 0.0
-
-                else: # signal == 'hold'
+                else:
                     status = "In Position" if self.in_position else "Awaiting Signal"
                     print(f"Signal: Hold. Current status: {status}. Portfolio Balance: ${self.portfolio_manager.balance:.2f}")
 
@@ -212,10 +112,34 @@ class Trader:
                 print(f"An unexpected error occurred in the main loop: {e}")
 
             print("\n" + "="*50 + "\n")
-            time.sleep(3600) # Wait for the next candle
+            time.sleep(3600)
 
+# ==============================================================================
+# SCRIPT ENTRY POINT
+# ==============================================================================
 if __name__ == '__main__':
-    trader = Trader()
-    trader.run()
+    load_dotenv()
+    config = ConfigurationManager()
 
-
+    # Allow running the backtester from the command line
+    if len(sys.argv) > 1 and sys.argv[1] == 'backtest':
+        strategy_name = config.active_strategy
+        if strategy_name == 'SENTIMENT_MOMENTUM':
+            strategy_conf = {
+                "name": strategy_name,
+                "params": {
+                    "short_window": config.sm_short_window,
+                    "long_window": config.sm_long_window,
+                    "atr_period": config.sm_atr_period,
+                    "atr_multiplier": config.sm_atr_multiplier
+                }
+            }
+            # Example: python main.py backtest 2023-01-01
+            start_date_str = sys.argv[2] if len(sys.argv) > 2 else "2023-01-01"
+            backtester = Backtester(config, strategy_conf, start_date_str)
+            backtester.run()
+        else:
+            print(f"Backtesting for strategy '{strategy_name}' not implemented.")
+    else:
+        trader = Trader(config)
+        trader.run()
