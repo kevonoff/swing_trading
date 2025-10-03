@@ -3,12 +3,12 @@ import os
 import time
 import pandas as pd
 from config import ConfigurationManager
-from sentiment_analysis.engine import SentimentAnalyzer
+from sentiment import SentimentAnalyzer
 from strategy_engine import StrategyEngine
 
 # ==============================================================================
 # DATA HANDLER
-# ==============================================================================
+# ==============================================================================pip
 class DataHandler:
     def __init__(self, config: ConfigurationManager):
         self.config = config
