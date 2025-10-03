@@ -79,9 +79,3 @@ def get_current_market_sentiment():
     """
     engine = SentimentEngine()
     return engine.analyze_sentiment()
-
-if __name__ == '__main__':
-    # This allows you to run this file directly to test the sentiment engine
-    print("Testing the Sentiment Engine independently...")
-    sentiment = get_current_market_sentiment()
-    print(f"\nFinal determined sentiment: {sentiment}")
