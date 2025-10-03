@@ -2,8 +2,10 @@ import ccxt
 import os
 import time
 import pandas as pd
+import pandas_ta as ta
+from dotenv import load_dotenv
 from config import ConfigurationManager
-from sentiment_engine import SentimentAnalyzer
+from sentiment import SentimentAnalyzer # <--- CORRECTED IMPORT
 from strategy_engine import StrategyEngine
 
 # ==============================================================================
@@ -216,4 +218,5 @@ class Trader:
 if __name__ == '__main__':
     trader = Trader()
     trader.run()
+
 
